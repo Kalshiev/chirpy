@@ -12,7 +12,6 @@
 *.test
 
 # Code coverage profiles and other test artifacts
-out
 *.out
 coverage.*
 *.coverprofile
@@ -31,3 +30,5 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+*.http
