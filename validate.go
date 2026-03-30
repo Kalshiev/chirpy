@@ -11,7 +11,7 @@ type chirp struct {
 	Body string `json:"body"`
 }
 
-type error struct {
+type errorR struct {
 	Error string `json:"error"`
 }
 
@@ -40,7 +40,7 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
-	respondWithJSON(w, code, error{Error: msg})
+	respondWithJSON(w, code, errorR{Error: msg})
 }
 
 func respondWithJSON(w http.ResponseWriter, code int, payload any) {
