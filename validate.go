@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/kalshiev/chirpy/internal/database"
 )
 
-type chirp struct {
+type Chirp struct {
 	ID        uuid.UUID `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -19,57 +18,41 @@ type chirp struct {
 	UserID    uuid.UUID `json:"user_id"`
 }
 
-type errorR struct {
-	Error string `json:"error"`
-}
-
-type valid struct {
-	Valid     bool   `json:"valid"`
-	CleanBody string `json:"cleaned_body"`
-}
-
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Body   string    `json:"body"`
+		UserID uuid.UUID `json:"user_id"`
+	}
+
 	decoder := json.NewDecoder(r.Body)
-	respBody := chirp{}
-	err := decoder.Decode(&respBody)
+	params := parameters{}
+	err := decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, 400, "Something went wrong")
 		return
 	}
 
-	if len(respBody.Body) > 140 {
+	if len(params.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
 
-	newChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
-		UserID: respBody.UserID,
-		Body:   censorProfanity(respBody.Body),
+	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		UserID: params.UserID,
+		Body:   censorProfanity(params.Body),
 	})
 	if err != nil {
-		respondWithError(w, 500, "Database error")
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
 	}
 
-	respondWithJSON(w, 201, newChirp)
+	respondWithJSON(w, 201, Chirp{
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
+	})
 
-}
-
-func respondWithError(w http.ResponseWriter, code int, msg string) {
-	respondWithJSON(w, code, errorR{Error: msg})
-}
-
-func respondWithJSON(w http.ResponseWriter, code int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		log.Printf("Error marshaling JSON: %s", err)
-		w.WriteHeader(500)
-		return
-	}
-
-	w.Write(data)
 }
 
 func censorProfanity(body string) (cleaned string) {
