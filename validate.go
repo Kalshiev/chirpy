@@ -5,10 +5,18 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/kalshiev/chirpy/internal/database"
 )
 
 type chirp struct {
-	Body string `json:"body"`
+	ID        uuid.UUID `json:"id"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Body      string    `json:"body"`
+	UserID    uuid.UUID `json:"user_id"`
 }
 
 type errorR struct {
@@ -20,7 +28,7 @@ type valid struct {
 	CleanBody string `json:"cleaned_body"`
 }
 
-func handlerValidate(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	respBody := chirp{}
 	err := decoder.Decode(&respBody)
@@ -31,12 +39,19 @@ func handlerValidate(w http.ResponseWriter, r *http.Request) {
 
 	if len(respBody.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")
-	} else {
-		respondWithJSON(w, 200, valid{
-			Valid:     true,
-			CleanBody: censorProfanity(respBody.Body),
-		})
+		return
 	}
+
+	newChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		UserID: respBody.UserID,
+		Body:   censorProfanity(respBody.Body),
+	})
+	if err != nil {
+		respondWithError(w, 500, "Database error")
+	}
+
+	respondWithJSON(w, 201, newChirp)
+
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
