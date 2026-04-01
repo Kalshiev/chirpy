@@ -6,26 +6,100 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kalshiev/chirpy/internal/auth"
+	"github.com/kalshiev/chirpy/internal/database"
 )
 
 type User struct {
 	ID        uuid.UUID `json:"id"`
+	Password  string    `json:"password"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
 }
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
+	type params struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
 	decoder := json.NewDecoder(r.Body)
-	respBody := User{}
+	respBody := params{}
 	err := decoder.Decode(&respBody)
 	if err != nil {
 		respondWithError(w, 400, "JSON decoding failed")
+		return
 	}
-	user, err := cfg.db.CreateUser(r.Context(), respBody.Email)
 
-	respBody.ID = user.ID
-	respBody.CreatedAt = user.CreatedAt
-	respBody.UpdatedAt = user.UpdatedAt
-	respondWithJSON(w, 201, respBody)
+	if respBody.Password == "" {
+		respondWithError(w, 400, "Please provide a password")
+		return
+	}
+
+	hash, err := auth.HashPassword(respBody.Password)
+	if err != nil {
+		respondWithError(w, 400, "Hashing failed")
+		return
+	}
+
+	user, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
+		Email:          respBody.Email,
+		HashedPassword: hash,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 201, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
+}
+
+func (cfg *apiConfig) HandlerLoginUser(w http.ResponseWriter, r *http.Request) {
+	type params struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	respBody := params{}
+	err := decoder.Decode(&respBody)
+	if err != nil {
+		respondWithError(w, 400, "JSON decoding failed")
+		return
+	}
+
+	if respBody.Password == "" || respBody.Email == "" {
+		respondWithError(w, 400, "Please provide an email and password")
+		return
+	}
+
+	user, err := cfg.db.GetUserByEmail(r.Context(), respBody.Email)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	valid, err := auth.CheckPasswordHash(respBody.Password, user.HashedPassword)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if !valid {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email or password")
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, User{
+		ID:        user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email:     user.Email,
+	})
 }
