@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kalshiev/chirpy/internal/auth"
 	"github.com/kalshiev/chirpy/internal/database"
 )
 
@@ -23,13 +24,14 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 	type parameters struct {
 		Body   string    `json:"body"`
 		UserID uuid.UUID `json:"user_id"`
+		Token  string    `json:"token"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		respondWithError(w, 400, "Something went wrong")
+		respondWithError(w, 400, err.Error())
 		return
 	}
 
@@ -38,12 +40,25 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	reqToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	validatedUser, err := auth.ValidateJWT(reqToken, cfg.tokenSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
 	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
-		UserID: params.UserID,
+		UserID: validatedUser,
 		Body:   censorProfanity(params.Body),
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp")
+		return
 	}
 
 	respondWithJSON(w, 201, Chirp{
