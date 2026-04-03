@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -11,12 +12,13 @@ import (
 )
 
 type User struct {
-	ID        uuid.UUID `json:"id"`
-	Password  string    `json:"password"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Email     string    `json:"email"`
-	Token     string    `json:"token"`
+	ID           uuid.UUID `json:"id"`
+	Password     string    `json:"password"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Email        string    `json:"email"`
+	Token        string    `json:"token"`
+	RefreshToken string    `json:"refresh_token"`
 }
 
 func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) {
@@ -63,9 +65,8 @@ func (cfg *apiConfig) handlerCreateUser(w http.ResponseWriter, r *http.Request) 
 
 func (cfg *apiConfig) HandlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	type params struct {
-		Email          string `json:"email"`
-		Password       string `json:"password"`
-		ExpiresSeconds int    `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -79,10 +80,6 @@ func (cfg *apiConfig) HandlerLoginUser(w http.ResponseWriter, r *http.Request) {
 	if respBody.Password == "" || respBody.Email == "" {
 		respondWithError(w, 400, "Please provide an email and password")
 		return
-	}
-
-	if respBody.ExpiresSeconds == 0 || respBody.ExpiresSeconds > 3600 {
-		respBody.ExpiresSeconds = 3600
 	}
 
 	user, err := cfg.db.GetUserByEmail(r.Context(), respBody.Email)
@@ -102,16 +99,26 @@ func (cfg *apiConfig) HandlerLoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, time.Duration(respBody.ExpiresSeconds)*time.Second)
+	token, err := auth.MakeJWT(user.ID, cfg.tokenSecret, time.Duration(1)*time.Hour)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
 	}
 
+	refreshToken, err := cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:  auth.MakeRefreshToken(),
+		UserID: user.ID,
+		ExpiresAt: sql.NullTime{
+			Time:  time.Now().Add((time.Duration(24) * time.Hour) * 60),
+			Valid: true,
+		},
+	})
+
 	respondWithJSON(w, http.StatusOK, User{
-		ID:        user.ID,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
-		Email:     user.Email,
-		Token:     token,
+		ID:           user.ID,
+		CreatedAt:    user.CreatedAt,
+		UpdatedAt:    user.UpdatedAt,
+		Email:        user.Email,
+		Token:        token,
+		RefreshToken: refreshToken.Token,
 	})
 }
