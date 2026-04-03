@@ -46,6 +46,7 @@ func main() {
 	mux.Handle("/app/", http.StripPrefix("/app/", apiCfg.middlewareMetricsInc(http.FileServer(http.Dir(filepathRoot)))))
 	mux.Handle("/app/assets", http.FileServer(http.Dir("/assets/logo.png")))
 
+	mux.HandleFunc("GET /api/tea", handlerTeaPot)
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 
 	mux.HandleFunc("POST /api/chirps", apiCfg.handlerCreateChirp)
