@@ -42,7 +42,7 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 
 	reqToken, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, err.Error())
+		respondWithError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
@@ -137,4 +137,47 @@ func (cfg *apiConfig) handlerGetChirpById(w http.ResponseWriter, r *http.Request
 		Body:      chirp.Body,
 		UserID:    chirp.UserID,
 	})
+}
+
+func (cfg *apiConfig) handlerDeleteChirpById(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("chirpID")
+	uuid, err := uuid.Parse(id)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	reqToken, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	validatedUser, err := auth.ValidateJWT(reqToken, cfg.tokenSecret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	chirp, err := cfg.db.GetChirpByID(r.Context(), uuid)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	if chirp.UserID != validatedUser {
+		respondWithError(w, http.StatusForbidden, http.StatusText(403))
+		return
+	}
+
+	err = cfg.db.DeleteChirpByID(r.Context(), database.DeleteChirpByIDParams{
+		ID:     uuid,
+		UserID: validatedUser,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
