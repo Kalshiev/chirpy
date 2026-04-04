@@ -23,3 +23,12 @@ func MakeRefreshToken() string {
 
 	return hex.EncodeToString(key)
 }
+
+func GetAPIKey(headers http.Header) (string, error) {
+	if headers.Get("Authorization") == "" {
+		return "", fmt.Errorf("No Authorization Token in Header")
+	}
+	key := strings.TrimPrefix(headers.Get("Authorization"), "ApiKey ")
+
+	return key, nil
+}
